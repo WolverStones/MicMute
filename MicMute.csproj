@@ -15,7 +15,7 @@
          ambient font for controls that inherit (G6: explicit Font=... wins). -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationDefaultFont>Segoe UI, 9pt</ApplicationDefaultFont>
-    <Version>2.3.2</Version>
+    <Version>2.4.0</Version>
     <Description>Global-hotkey microphone mute/unmute tray utility</Description>
     <Product>MicMute</Product>
     <Company>itsNate</Company>

@@ -4,7 +4,7 @@
 
 All notable changes to MicMute are documented here.
 
-## [Unreleased]
+## [2.4.0] - 2026-10-13
 
 ### Added
 - **Always-on status indicator.** A small antialiased dot that sits above the foreground app — including games running borderless or in Windows' optimised fullscreen — so you can tell at a glance whether the mic is muted. Red while muted, hidden while live (or green with `Indicator_ShowWhenLive=1`). It is click-through and never takes focus, so it doesn't interfere with the game.
