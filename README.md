@@ -83,6 +83,15 @@ Releases publish a `SHA256SUMS` file alongside the exe. The in-app **Update** bu
 
 **Deafen**: Assign a separate hotkey in Settings. Mutes both mic and speakers. Press again to restore both.
 
+### Status Indicator
+
+A small red dot stays on screen while the mic is muted — on the desktop and above games running borderless or in Windows' optimised fullscreen. It is click-through and never steals focus.
+
+- **Move it**: press `Win+Ctrl+Shift+I` (or *Tray → Status Indicator → Move dot…*), drag the dot, then press the hotkey again or right-click the dot to save.
+- **Per-game positions**: the position is saved for whichever app was in the foreground when you started moving it, so each game can keep the dot clear of its own HUD. Apps without a saved position use the default spot — set it by moving the dot while the desktop is focused.
+- **Show while live**: *Tray → Status Indicator → Also show green dot while live* keeps a green dot visible when the mic is open.
+- Games in true *exclusive* fullscreen (mostly older DX9 titles) draw over every window — use borderless mode there.
+
 ### Tray Menu
 
 Right-click the tray icon for the full menu:
@@ -92,6 +101,7 @@ Right-click the tray icon for the full menu:
 - Select mic source
 - Open Settings, Help, Sound Settings
 - Reinitialise mic (if device changed)
+- Status indicator: enable, show while live, move, reset position for the current app
 
 ## Customization
 
@@ -108,6 +118,14 @@ MuteLock=0
 MiddleClickToggle=1
 StartMuted=no
 DeafenHotkey=
+Indicator_Enabled=1
+Indicator_ShowWhenLive=0
+Indicator_Size=14
+Indicator_EditHotkey=#^+i
+
+[IndicatorPositions]
+*=6,540
+cs2.exe=1880,120
 ```
 
 | Key | Default | Description |
@@ -124,6 +142,12 @@ DeafenHotkey=
 | `DeviceId` | *(empty)* | Specific mic device (empty = system default) |
 | `IconMuted` / `IconActive` | *(empty)* | Custom .ico file paths |
 | `MuteSound` / `UnmuteSound` | *(empty)* | Custom .wav file paths |
+| `Indicator_Enabled` | `1` | Show the always-on status dot while muted |
+| `Indicator_ShowWhenLive` | `0` | Also show the dot (green) while the mic is live |
+| `Indicator_Size` | `14` | Dot diameter in logical pixels (6–64) |
+| `Indicator_EditHotkey` | `#^+i` | Hotkey to move the dot / save its position (empty = tray menu only) |
+
+`[IndicatorPositions]` holds the dot's screen position per executable (`game.exe=x,y`); `*` is the default for every other app. Written automatically when you move the dot.
 
 ## How It Works
 
@@ -141,6 +165,7 @@ A 15-second periodic sync timer detects external mute changes, device hot-plug e
 | `AudioManager.cs` | Core Audio COM interop — mute, enumerate, speaker control |
 | `Config.cs` | INI config reader/writer with hotkey parsing |
 | `OsdForm.cs` | On-screen display overlay (click-through, auto-dismiss) |
+| `IndicatorForm.cs` | Always-on status dot (click-through, per-game positions) |
 | `SettingsDialog.cs` | Settings GUI — includes inline hotkey capture |
 | `HelpWindow.cs` | Help text window |
 | `NativeMethods.cs` | Win32 P/Invoke declarations |

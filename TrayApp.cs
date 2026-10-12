@@ -8,6 +8,7 @@ internal sealed class TrayApp : Form
 {
     private const int HOTKEY_ID_MAIN = 1;
     private const int HOTKEY_ID_DEAFEN = 2;
+    private const int HOTKEY_ID_INDICATOR_EDIT = 3;
 
     private readonly Config _config;
     private readonly AudioManager _audio;
@@ -15,6 +16,7 @@ internal sealed class TrayApp : Form
     private readonly ContextMenuStrip _trayMenu;
     private readonly System.Windows.Forms.Timer _syncTimer;
     private readonly OsdForm _osdForm;
+    private readonly IndicatorForm _indicator;
 
     // Cached icons — loaded once at startup, reloaded on settings change
     private Icon _iconActive;
@@ -39,6 +41,7 @@ internal sealed class TrayApp : Form
     // Track registered hotkeys for cleanup
     private bool _mainHotkeyRegistered;
     private bool _deafenHotkeyRegistered;
+    private bool _indicatorHotkeyRegistered;
 
     // Singleton dialogs
     private SettingsDialog _settingsDialog;
@@ -154,6 +157,10 @@ internal sealed class TrayApp : Form
         // OSD form (must be created before hotkey registration — errors show via OSD)
         _osdForm = new OsdForm();
 
+        // Always-on mute indicator (red dot). Created after Theme/config load.
+        _indicator = new IndicatorForm(_config);
+        _indicator.SetMuted(_muted);
+
         // Flash timer (reusable, not started)
         _flashTimer = new System.Windows.Forms.Timer { Interval = 100 };
         _flashTimer.Tick += OnFlashTick;
@@ -203,6 +210,7 @@ internal sealed class TrayApp : Form
         base.OnHandleCreated(e);
         RegisterMainHotkey();
         RegisterDeafenHotkey();
+        RegisterIndicatorHotkey();
 
         // A3-F13: deliver any custom-icon-fallback toast that was queued before the
         // handle existed (LoadIcons runs in the ctor, before OnHandleCreated).
@@ -289,6 +297,8 @@ internal sealed class TrayApp : Form
                     NativeMethods.UnregisterHotKey(app.Handle, HOTKEY_ID_MAIN);
                 if (app._deafenHotkeyRegistered)
                     NativeMethods.UnregisterHotKey(app.Handle, HOTKEY_ID_DEAFEN);
+                if (app._indicatorHotkeyRegistered)
+                    NativeMethods.UnregisterHotKey(app.Handle, HOTKEY_ID_INDICATOR_EDIT);
             }
             catch { /* best-effort */ }
         }
@@ -301,6 +311,7 @@ internal sealed class TrayApp : Form
         try { _flashTimer?.Stop(); _flashTimer?.Dispose(); } catch { }
         try { _pttUniversalTimer?.Stop(); _pttUniversalTimer?.Dispose(); } catch { }
         try { _osdForm?.Dispose(); } catch { }
+        try { _indicator?.Dispose(); } catch { }
         try { if (_trayIcon != null) { _trayIcon.Visible = false; _trayIcon.Dispose(); } } catch { }
         try { DisposeMenuItems(); _trayMenu?.Dispose(); } catch { }
         try { _menuTitleFont?.Dispose(); } catch { }
@@ -459,6 +470,9 @@ internal sealed class TrayApp : Form
 
     private void SyncTrayIcon()
     {
+        // Every _muted change funnels through here — keep the indicator in step
+        // (before the flash guard, which only concerns the tray icon).
+        _indicator?.SetMuted(_muted);
         if (_flashing)
             return;
         SetTrayIcon();
@@ -895,6 +909,70 @@ internal sealed class TrayApp : Form
         }
     }
 
+    private void RegisterIndicatorHotkey()
+    {
+        UnregisterIndicatorHotkey();
+
+        if (string.IsNullOrEmpty(_config.IndicatorEditHotkey))
+            return;
+
+        if (!Config.ParseHotkey(_config.IndicatorEditHotkey, out uint mods, out uint vk))
+        {
+            ShowTimedTooltip("Invalid indicator hotkey: " + _config.IndicatorEditHotkey, 5000);
+            return;
+        }
+
+        if (NativeMethods.RegisterHotKey(Handle, HOTKEY_ID_INDICATOR_EDIT, mods, vk))
+        {
+            _indicatorHotkeyRegistered = true;
+        }
+        else
+        {
+            int err = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+            Log.Warn($"RegisterIndicatorHotkey failed for '{_config.IndicatorEditHotkey}': Win32 error {err} (0x{err:X4})");
+            ShowTimedTooltip("Could not register indicator hotkey: " + Config.HotkeyToReadable(_config.IndicatorEditHotkey), 5000);
+        }
+    }
+
+    private void UnregisterIndicatorHotkey()
+    {
+        if (_indicatorHotkeyRegistered)
+        {
+            NativeMethods.UnregisterHotKey(Handle, HOTKEY_ID_INDICATOR_EDIT);
+            _indicatorHotkeyRegistered = false;
+        }
+    }
+
+    // ── Status Indicator ─────────────────────────────────────────────────
+
+    private void ToggleIndicatorEditMode()
+    {
+        if (!_config.IndicatorEnabled)
+        {
+            ShowTimedTooltip("Status indicator is turned off.", 2000);
+            return;
+        }
+        _indicator.ToggleEditMode();
+        if (_indicator.EditMode)
+            ShowTimedTooltip("Drag the dot. Press " + Config.HotkeyToReadable(_config.IndicatorEditHotkey) +
+                             " or right-click it to save\nPosition for: " + DescribeProfile(_indicator.CurrentProfile), 4000);
+        else
+            ShowTimedTooltip("Indicator position saved.", 1500);
+        BuildTrayMenu();
+    }
+
+    private static string DescribeProfile(string profile) =>
+        profile == Config.IndicatorDefaultProfile ? "default (all apps)" : profile;
+
+    private void SetIndicatorOption(Action<Config> change)
+    {
+        change(_config);
+        if (!_config.Save())
+            ShowTimedTooltip("Settings couldn't be saved.\nCheck permissions on MicMute.ini.", 4000);
+        _indicator.ApplyConfig();
+        BuildTrayMenu();
+    }
+
     // ── WndProc ──────────────────────────────────────────────────────────
 
     protected override void WndProc(ref Message m)
@@ -914,6 +992,10 @@ internal sealed class TrayApp : Form
             else if (id == HOTKEY_ID_DEAFEN)
             {
                 ToggleDeafen();
+            }
+            else if (id == HOTKEY_ID_INDICATOR_EDIT)
+            {
+                ToggleIndicatorEditMode();
             }
             else
             {
@@ -1273,6 +1355,36 @@ internal sealed class TrayApp : Form
         _deviceMenuPopulated = false;
         _trayMenu.Items.Add(_deviceMenuItem);
 
+        // Status indicator submenu
+        var indicatorItem = new ToolStripMenuItem("Status Indicator");
+        ThemeDropDown(indicatorItem);
+        var indEnabled = new ToolStripMenuItem("Show red dot while muted") { Checked = _config.IndicatorEnabled };
+        indEnabled.Click += (_, _) => SetIndicatorOption(c => c.IndicatorEnabled = !c.IndicatorEnabled);
+        var indLive = new ToolStripMenuItem("Also show green dot while live")
+        {
+            Checked = _config.IndicatorShowWhenLive,
+            Enabled = _config.IndicatorEnabled,
+        };
+        indLive.Click += (_, _) => SetIndicatorOption(c => c.IndicatorShowWhenLive = !c.IndicatorShowWhenLive);
+        var indEdit = new ToolStripMenuItem(_indicator.EditMode ? "Save position" : "Move dot…")
+        {
+            Enabled = _config.IndicatorEnabled,
+            ShortcutKeyDisplayString = string.IsNullOrEmpty(_config.IndicatorEditHotkey)
+                ? null : Config.HotkeyToReadable(_config.IndicatorEditHotkey),
+        };
+        indEdit.Click += (_, _) => ToggleIndicatorEditMode();
+        var indReset = new ToolStripMenuItem("Reset position for " + DescribeProfile(_indicator.CurrentProfile))
+        {
+            Enabled = _config.IndicatorEnabled,
+        };
+        indReset.Click += (_, _) => _indicator.ResetCurrentProfile();
+        indicatorItem.DropDownItems.Add(indEnabled);
+        indicatorItem.DropDownItems.Add(indLive);
+        indicatorItem.DropDownItems.Add(new ToolStripSeparator());
+        indicatorItem.DropDownItems.Add(indEdit);
+        indicatorItem.DropDownItems.Add(indReset);
+        _trayMenu.Items.Add(indicatorItem);
+
         _trayMenu.Items.Add(new ToolStripSeparator());
 
         // Reinit
@@ -1552,6 +1664,8 @@ internal sealed class TrayApp : Form
         }
         RegisterMainHotkey();
         RegisterDeafenHotkey();
+        RegisterIndicatorHotkey();
+        _indicator?.ApplyConfig();
 
         // Refresh tray
         _tooltipDirty = true;
@@ -1754,6 +1868,7 @@ internal sealed class TrayApp : Form
             // Unregister hotkeys
             try { UnregisterMainHotkey(); } catch { }
             try { UnregisterDeafenHotkey(); } catch { }
+            try { UnregisterIndicatorHotkey(); } catch { }
 
             // Stop and dispose timers
             if (_syncTimer != null) { try { _syncTimer.Stop(); _syncTimer.Dispose(); } catch { } }
@@ -1765,8 +1880,9 @@ internal sealed class TrayApp : Form
                 _pttUniversalTimer = null;
             }
 
-            // Dispose OSD
+            // Dispose OSD + indicator
             try { _osdForm?.Dispose(); } catch { }
+            try { _indicator?.Dispose(); } catch { }
 
             // Dispose tray icon (set invisible first)
             if (_trayIcon != null)

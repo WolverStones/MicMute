@@ -37,6 +37,16 @@ internal sealed class Config
     // (Settings, Help, Update, OSD, tooltips, tray menu) — tray icons always
     // render against the user's actual taskbar regardless of this setting.
     public string ThemeMode = "System";
+    // Always-on status indicator (red dot while muted). Positions are stored
+    // per foreground executable in the [IndicatorPositions] section so the dot
+    // can dodge each game's HUD; "*" is the fallback for everything else.
+    public bool IndicatorEnabled = true;
+    public bool IndicatorShowWhenLive;
+    public int IndicatorSize = 14;
+    public string IndicatorEditHotkey = "#^+i";
+    public Dictionary<string, Point> IndicatorPositions = new(StringComparer.OrdinalIgnoreCase);
+    public const string IndicatorDefaultProfile = "*";
+    private const string IndicatorSection = "IndicatorPositions";
     // Opt-in: poll-based PTT via GetAsyncKeyState instead of RegisterHotKey.
     // Works over fullscreen-exclusive games and supports bare-modifier keys
     // (LCtrl / RCtrl / RShift / etc.). No keyboard hook is installed — the
@@ -192,6 +202,13 @@ internal sealed class Config
         else
             ThemeMode = "System";
 
+        IndicatorEnabled = ReadIni("Indicator_Enabled", "1") == "1";
+        IndicatorShowWhenLive = ReadIni("Indicator_ShowWhenLive", "0") == "1";
+        if (int.TryParse(ReadIni("Indicator_Size", "14"), out int indSize))
+            IndicatorSize = Math.Clamp(indSize, 6, 64);
+        IndicatorEditHotkey = ReadIni("Indicator_EditHotkey", IndicatorEditHotkey).Trim();
+        LoadIndicatorPositions();
+
         // Persist any v2.1.5 → v2.1.6 bare-hotkey migrations so the next
         // launch reads the already-valid value (and so the user's "change
         // hotkey" flow doesn't revert to the original legacy string).
@@ -258,6 +275,14 @@ internal sealed class Config
         sb.AppendLine("StartMuted=" + StartMuted);
         sb.AppendLine("LastMuteState=" + (LastMuteState ? "1" : "0"));
         sb.AppendLine("ThemeMode=" + ThemeMode);
+        sb.AppendLine("Indicator_Enabled=" + (IndicatorEnabled ? "1" : "0"));
+        sb.AppendLine("Indicator_ShowWhenLive=" + (IndicatorShowWhenLive ? "1" : "0"));
+        sb.AppendLine("Indicator_Size=" + IndicatorSize.ToString());
+        sb.AppendLine("Indicator_EditHotkey=" + IndicatorEditHotkey);
+        sb.AppendLine();
+        sb.AppendLine("[" + IndicatorSection + "]");
+        foreach (var kv in IndicatorPositions)
+            sb.AppendLine(FormatIndicatorPosition(kv.Key, kv.Value));
 
         lock (_saveLock)
         {
@@ -272,6 +297,54 @@ internal sealed class Config
         LastMuteState = muted;
         return Save();
     }
+
+    /// <summary>
+    /// Reads the [IndicatorPositions] section ("game.exe=x,y" per line). The
+    /// INI API has no clean "enumerate keys" call, so the section is parsed by
+    /// hand — FixEncoding has already normalised the file to UTF-8 by now.
+    /// </summary>
+    private void LoadIndicatorPositions()
+    {
+        IndicatorPositions.Clear();
+        try
+        {
+            bool inSection = false;
+            foreach (string raw in File.ReadAllLines(_iniPath))
+            {
+                string line = raw.Trim();
+                if (line.StartsWith('['))
+                {
+                    inSection = string.Equals(line, "[" + IndicatorSection + "]", StringComparison.OrdinalIgnoreCase);
+                    continue;
+                }
+                if (inSection && TryParseIndicatorPosition(line, out string profile, out Point pos))
+                    IndicatorPositions[profile] = pos;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("LoadIndicatorPositions failed: " + ex.Message);
+        }
+    }
+
+    internal static bool TryParseIndicatorPosition(string line, out string profile, out Point pos)
+    {
+        profile = "";
+        pos = Point.Empty;
+        int eq = line.LastIndexOf('=');
+        if (eq <= 0)
+            return false;
+        profile = line[..eq].Trim();
+        string[] parts = line[(eq + 1)..].Split(',');
+        if (profile.Length == 0 || parts.Length != 2 ||
+            !int.TryParse(parts[0].Trim(), out int x) || !int.TryParse(parts[1].Trim(), out int y))
+            return false;
+        pos = new Point(x, y);
+        return true;
+    }
+
+    internal static string FormatIndicatorPosition(string profile, Point pos) =>
+        profile + "=" + pos.X.ToString() + "," + pos.Y.ToString();
 
     /// <summary>
     /// Removes orphaned .tmp files left by interrupted saves (e.g. AV lock,

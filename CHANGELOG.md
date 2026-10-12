@@ -4,6 +4,19 @@
 
 All notable changes to MicMute are documented here.
 
+## [Unreleased]
+
+### Added
+- **Always-on status indicator.** A small antialiased dot that sits above the foreground app — including games running borderless or in Windows' optimised fullscreen — so you can tell at a glance whether the mic is muted. Red while muted, hidden while live (or green with `Indicator_ShowWhenLive=1`). It is click-through and never takes focus, so it doesn't interfere with the game.
+- **Movable dot with per-game positions.** Press the edit hotkey (`Win+Ctrl+Shift+I` by default, `Indicator_EditHotkey`) or use *Tray → Status Indicator → Move dot…*, drag the dot out of the way of the HUD, then press the hotkey again or right-click the dot to save. The position is stored for the executable that was in the foreground (e.g. `cs2.exe`) in a new `[IndicatorPositions]` INI section; apps without a saved position use the default spot (`*`, saved by editing while the desktop is focused). The indicator checks the foreground window once a second, swaps positions automatically and re-asserts topmost for games that push themselves above it. Positions that end up off-screen (monitor unplugged, resolution change) are pulled back onto a visible screen.
+- **Tray → Status Indicator submenu**: enable/disable the dot, show it while live, move it, reset the position for the current app.
+
+### Fixed
+- **OSD no longer flickers the game or ends up behind it.** The OSD form set WinForms `TopMost = true`, which makes WinForms ignore `ShowWithoutActivation` — every toast stole focus from the foreground game, fullscreen games flickered while switching presentation mode, then took focus back and covered the OSD. The OSD is now shown with `SW_SHOWNOACTIVATE` + `SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE)` and carries `WS_EX_NOACTIVATE`, so it never activates. `Opacity` is set once at construction instead of on every show (re-setting it toggled `WS_EX_LAYERED` at runtime, another source of blinking) and the form is double-buffered.
+
+### Notes
+- Neither the OSD nor the indicator can draw over a game running in true *exclusive* fullscreen (mostly older DX9 titles) — switch those games to borderless / windowed fullscreen.
+
 ## [2.3.2] - 2026-06-04
 
 ### Fixed

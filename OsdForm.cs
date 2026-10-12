@@ -45,10 +45,17 @@ internal sealed class OsdForm : Form
     {
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
-        TopMost = true;
+        // No `TopMost = true`: WinForms ignores ShowWithoutActivation on TopMost
+        // forms, so Show() stole focus from the foreground game — fullscreen
+        // games flicker on focus loss and then cover the OSD. Topmost comes from
+        // WS_EX_TOPMOST in CreateParams + SetWindowPos(HWND_TOPMOST) in ShowInternal.
         StartPosition = FormStartPosition.Manual;
         BackColor = Theme.BgColor;
         SetStyle(ControlStyles.SupportsTransparentBackColor, true);
+        DoubleBuffered = true;
+        // Set once: changing Opacity on every show toggles WS_EX_LAYERED at
+        // runtime, which itself causes a visible blink.
+        Opacity = 215.0 / 255.0;
 
         _dismissTimer = new System.Windows.Forms.Timer();
         _dismissTimer.Tick += (_, _) =>
@@ -57,7 +64,7 @@ internal sealed class OsdForm : Form
             // fires after Dispose() would otherwise hit an ObjectDisposedException.
             if (_disposed) return;
             _dismissTimer.Stop();
-            Hide();
+            HideNative();
         };
     }
 
@@ -69,6 +76,7 @@ internal sealed class OsdForm : Form
             cp.ExStyle |= 0x00000080; // WS_EX_TOOLWINDOW — no taskbar entry
             cp.ExStyle |= 0x00000020; // WS_EX_TRANSPARENT — click-through
             cp.ExStyle |= 0x00000008; // WS_EX_TOPMOST
+            cp.ExStyle |= 0x08000000; // WS_EX_NOACTIVATE — never take focus from the game
             return cp;
         }
     }
@@ -107,7 +115,27 @@ internal sealed class OsdForm : Form
     {
         if (_disposed || IsDisposed) return;
         _dismissTimer.Stop();
-        if (Visible) Hide();
+        HideNative();
+    }
+
+    // Show/hide via Win32 directly — Form.Show() activates the window even with
+    // ShowWithoutActivation in some paths, and Visible-state bookkeeping isn't
+    // needed for a click-through overlay.
+    private bool IsShownNative => IsHandleCreated && NativeMethods.IsWindowVisible(Handle);
+
+    private void ShowNative()
+    {
+        if (!IsShownNative)
+            NativeMethods.ShowWindow(Handle, NativeMethods.SW_SHOWNOACTIVATE);
+        // Re-assert topmost on every show — games may have pushed themselves above us.
+        NativeMethods.SetWindowPos(Handle, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
+            NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
+    }
+
+    private void HideNative()
+    {
+        if (IsShownNative)
+            NativeMethods.ShowWindow(Handle, NativeMethods.SW_HIDE);
     }
 
     private void ShowInternal(string displayText, int durationMs)
@@ -183,10 +211,9 @@ internal sealed class OsdForm : Form
                 NativeMethods.DWMWA_WINDOW_CORNER_PREFERENCE,
                 ref preference, sizeof(int));
 
-            Opacity = 215.0 / 255.0;
             Invalidate();
 
-            if (!Visible) Show();
+            ShowNative();
 
             // durationMs <= 0 is the "persistent" sentinel — no auto-dismiss.
             // Caller owns Hide() via HidePersistent().

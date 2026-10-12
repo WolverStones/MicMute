@@ -85,6 +85,92 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int vKey);
 
+    // ── Non-activating topmost windows (OSD + status indicator) ──────────
+
+    public const int SW_HIDE = 0;
+    public const int SW_SHOWNOACTIVATE = 4;
+
+    public static readonly nint HWND_TOPMOST = -1;
+    public const uint SWP_NOSIZE = 0x0001;
+    public const uint SWP_NOMOVE = 0x0002;
+    public const uint SWP_NOACTIVATE = 0x0010;
+    public const uint SWP_SHOWWINDOW = 0x0040;
+
+    public const int WS_EX_TRANSPARENT = 0x00000020;
+    public const int WS_EX_TOOLWINDOW = 0x00000080;
+    public const int WS_EX_TOPMOST = 0x00000008;
+    public const int WS_EX_LAYERED = 0x00080000;
+    public const int WS_EX_NOACTIVATE = 0x08000000;
+    public const int GWL_EXSTYLE = -20;
+
+    public const int WM_MOUSEACTIVATE = 0x0021;
+    public const int MA_NOACTIVATE = 3;
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool ShowWindow(nint hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsWindowVisible(nint hWnd);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    public static extern nint GetWindowLongPtr(nint hWnd, int nIndex);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    public static extern nint SetWindowLongPtr(nint hWnd, int nIndex, nint dwNewLong);
+
+    [DllImport("user32.dll")]
+    public static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(nint hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern int GetClassName(nint hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
+
+    // Per-pixel-alpha layered window (antialiased round indicator dot)
+    public const int ULW_ALPHA = 0x00000002;
+    public const byte AC_SRC_OVER = 0x00;
+    public const byte AC_SRC_ALPHA = 0x01;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT { public int X, Y; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SIZE { public int Cx, Cy; }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct BLENDFUNCTION
+    {
+        public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool UpdateLayeredWindow(nint hwnd, nint hdcDst, ref POINT pptDst, ref SIZE psize,
+        nint hdcSrc, ref POINT pptSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
+
+    [DllImport("user32.dll")]
+    public static extern nint GetDC(nint hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern int ReleaseDC(nint hWnd, nint hDC);
+
+    [DllImport("gdi32.dll")]
+    public static extern nint CreateCompatibleDC(nint hDC);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DeleteDC(nint hdc);
+
+    [DllImport("gdi32.dll")]
+    public static extern nint SelectObject(nint hDC, nint hObject);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DeleteObject(nint hObject);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT
     {
