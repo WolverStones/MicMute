@@ -48,6 +48,7 @@ internal sealed class TrayApp : Form
 
     // Device menu lazy loading
     private ToolStripMenuItem _deviceMenuItem;
+    private ToolStripMenuItem _indicatorResetItem;
     private bool _deviceMenuPopulated;
 
     // Reusable bold font for menu title (disposed in cleanup)
@@ -144,6 +145,13 @@ internal sealed class TrayApp : Form
             ContextMenuStrip = _trayMenu,
         };
         _trayIcon.MouseClick += OnTrayMouseClick;
+        // The foreground app changes while the menu is closed — refresh the
+        // "Reset position for <app>" label each time the menu opens.
+        _trayMenu.Opening += (_, _) =>
+        {
+            if (_indicatorResetItem != null && _indicator != null)
+                _indicatorResetItem.Text = "Reset position for " + DescribeProfile(_indicator.CurrentProfile);
+        };
 
         // Build menu
         BuildTrayMenu();
@@ -957,7 +965,7 @@ internal sealed class TrayApp : Form
             ShowTimedTooltip("Drag the dot. Press " + Config.HotkeyToReadable(_config.IndicatorEditHotkey) +
                              " or right-click it to save\nPosition for: " + DescribeProfile(_indicator.CurrentProfile), 4000);
         else
-            ShowTimedTooltip("Indicator position saved.", 1500);
+            ShowTimedTooltip("Position saved for: " + DescribeProfile(_indicator.LastSavedProfile), 2500);
         BuildTrayMenu();
     }
 
@@ -1366,14 +1374,14 @@ internal sealed class TrayApp : Form
             Enabled = _config.IndicatorEnabled,
         };
         indLive.Click += (_, _) => SetIndicatorOption(c => c.IndicatorShowWhenLive = !c.IndicatorShowWhenLive);
-        var indEdit = new ToolStripMenuItem(_indicator.EditMode ? "Save position" : "Move dot…")
+        var indEdit = new ToolStripMenuItem(_indicator?.EditMode == true ? "Save position" : "Move dot…")
         {
             Enabled = _config.IndicatorEnabled,
             ShortcutKeyDisplayString = string.IsNullOrEmpty(_config.IndicatorEditHotkey)
                 ? null : Config.HotkeyToReadable(_config.IndicatorEditHotkey),
         };
         indEdit.Click += (_, _) => ToggleIndicatorEditMode();
-        var indReset = new ToolStripMenuItem("Reset position for " + DescribeProfile(_indicator.CurrentProfile))
+        var indReset = _indicatorResetItem = new ToolStripMenuItem("Reset position for " + DescribeProfile(_indicator?.CurrentProfile ?? Config.IndicatorDefaultProfile))
         {
             Enabled = _config.IndicatorEnabled,
         };

@@ -88,7 +88,7 @@ Releases publish a `SHA256SUMS` file alongside the exe. The in-app **Update** bu
 A small red dot stays on screen while the mic is muted — on the desktop and above games running borderless or in Windows' optimised fullscreen. It is click-through and never steals focus.
 
 - **Move it**: press `Win+Ctrl+Shift+I` (or *Tray → Status Indicator → Move dot…*), drag the dot, then press the hotkey again or right-click the dot to save.
-- **Per-game positions**: the position is saved for whichever app was in the foreground when you started moving it, so each game can keep the dot clear of its own HUD. Apps without a saved position use the default spot — set it by moving the dot while the desktop is focused.
+- **Per-game positions**: the position is saved for whichever app was in the foreground when you started moving it, so each game can keep the dot clear of its own HUD. The dot only moves when you switch to an app with its own saved position — clicking the desktop or another app leaves it where it is. The first saved position is also the startup default (move the dot while the desktop is focused to change it).
 - **Show while live**: *Tray → Status Indicator → Also show green dot while live* keeps a green dot visible when the mic is open.
 - Games in true *exclusive* fullscreen (mostly older DX9 titles) draw over every window — use borderless mode there.
 
@@ -120,7 +120,7 @@ StartMuted=no
 DeafenHotkey=
 Indicator_Enabled=1
 Indicator_ShowWhenLive=0
-Indicator_Size=14
+Indicator_Size=18
 Indicator_EditHotkey=#^+i
 
 [IndicatorPositions]
@@ -144,7 +144,7 @@ cs2.exe=1880,120
 | `MuteSound` / `UnmuteSound` | *(empty)* | Custom .wav file paths |
 | `Indicator_Enabled` | `1` | Show the always-on status dot while muted |
 | `Indicator_ShowWhenLive` | `0` | Also show the dot (green) while the mic is live |
-| `Indicator_Size` | `14` | Dot diameter in logical pixels (6–64) |
+| `Indicator_Size` | `18` | Dot diameter in logical pixels (6–64) |
 | `Indicator_EditHotkey` | `#^+i` | Hotkey to move the dot / save its position (empty = tray menu only) |
 
 `[IndicatorPositions]` holds the dot's screen position per executable (`game.exe=x,y`); `*` is the default for every other app. Written automatically when you move the dot.

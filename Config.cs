@@ -42,7 +42,7 @@ internal sealed class Config
     // can dodge each game's HUD; "*" is the fallback for everything else.
     public bool IndicatorEnabled = true;
     public bool IndicatorShowWhenLive;
-    public int IndicatorSize = 14;
+    public int IndicatorSize = 18;
     public string IndicatorEditHotkey = "#^+i";
     public Dictionary<string, Point> IndicatorPositions = new(StringComparer.OrdinalIgnoreCase);
     public const string IndicatorDefaultProfile = "*";
@@ -204,7 +204,7 @@ internal sealed class Config
 
         IndicatorEnabled = ReadIni("Indicator_Enabled", "1") == "1";
         IndicatorShowWhenLive = ReadIni("Indicator_ShowWhenLive", "0") == "1";
-        if (int.TryParse(ReadIni("Indicator_Size", "14"), out int indSize))
+        if (int.TryParse(ReadIni("Indicator_Size", "18"), out int indSize))
             IndicatorSize = Math.Clamp(indSize, 6, 64);
         IndicatorEditHotkey = ReadIni("Indicator_EditHotkey", IndicatorEditHotkey).Trim();
         LoadIndicatorPositions();

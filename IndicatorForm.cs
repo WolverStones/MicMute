@@ -21,8 +21,8 @@ namespace MicMute;
 /// </summary>
 internal sealed class IndicatorForm : Form
 {
-    private static readonly Color s_mutedColor = Color.FromArgb(0xE5, 0x3E, 0x3E);
-    private static readonly Color s_liveColor = Color.FromArgb(0x4C, 0xB8, 0x74);
+    private static readonly Color s_mutedColor = Color.FromArgb(0xFF, 0x2D, 0x2D);
+    private static readonly Color s_liveColor = Color.FromArgb(0x34, 0xD3, 0x6B);
     private static readonly Color s_editRingColor = Color.FromArgb(0xFF, 0xFF, 0xFF);
 
     private readonly Config _config;
@@ -31,7 +31,12 @@ internal sealed class IndicatorForm : Form
 
     private bool _muted;
     private bool _editMode;
+    // _profile = whose saved position is on screen; _fgProfile = the app that
+    // is actually in the foreground. They differ when the user clicks into an
+    // app without its own position (desktop, browser on the 2nd monitor…) —
+    // the dot then stays where the game put it instead of jumping away.
     private string _profile = Config.IndicatorDefaultProfile;
+    private string _fgProfile = Config.IndicatorDefaultProfile;
     private string _editProfile;
     private Point _pos;
     private bool _dragging;
@@ -44,8 +49,11 @@ internal sealed class IndicatorForm : Form
 
     public bool EditMode => _editMode;
 
-    /// <summary>Profile key of the app the dot is currently positioned for.</summary>
-    public string CurrentProfile => _profile;
+    /// <summary>Profile key of the foreground app (target of move / reset).</summary>
+    public string CurrentProfile => _fgProfile;
+
+    /// <summary>Profile the last edit-mode session saved its position under.</summary>
+    public string LastSavedProfile { get; private set; }
 
     public IndicatorForm(Config config)
     {
@@ -105,11 +113,15 @@ internal sealed class IndicatorForm : Form
     /// <summary>Drop the stored position for the current app (falls back to the default spot).</summary>
     public void ResetCurrentProfile()
     {
-        string key = _editMode ? _editProfile : _profile;
+        string key = _editMode ? _editProfile : _fgProfile;
         if (_config.IndicatorPositions.Remove(key))
             _config.Save();
-        _pos = ResolvePosition(key);
-        Render();
+        if (_editMode || string.Equals(key, _profile, StringComparison.OrdinalIgnoreCase))
+        {
+            _profile = Config.IndicatorDefaultProfile;
+            _pos = ResolvePosition(_profile);
+            Render();
+        }
     }
 
     // ── Edit mode ────────────────────────────────────────────────────────
@@ -118,8 +130,8 @@ internal sealed class IndicatorForm : Form
     {
         if (!_config.IndicatorEnabled) return;
         _editMode = true;
-        // On the desktop _profile is already "*", so that position becomes the global default.
-        _editProfile = _profile;
+        // Edit for the app in the foreground; on the desktop that's "*", the global default.
+        _editProfile = _fgProfile;
         SetClickThrough(false);
         Render();
         UpdateVisibility();
@@ -134,6 +146,11 @@ internal sealed class IndicatorForm : Form
         if (save)
         {
             _config.IndicatorPositions[_editProfile] = _pos;
+            // First ever save also seeds the default, so the dot doesn't jump
+            // back to the factory spot in every other app.
+            _config.IndicatorPositions.TryAdd(Config.IndicatorDefaultProfile, _pos);
+            LastSavedProfile = _editProfile;
+            _profile = _editProfile;
             if (!_config.Save())
                 Log.Warn("Indicator: position couldn't be saved");
         }
@@ -204,11 +221,21 @@ internal sealed class IndicatorForm : Form
             if (!_editMode)
             {
                 string profile = DetectForegroundProfile();
-                if (profile != null && !string.Equals(profile, _profile, StringComparison.OrdinalIgnoreCase))
+                if (profile != null)
                 {
-                    _profile = profile;
-                    _pos = ResolvePosition(profile);
-                    Render();
+                    _fgProfile = profile;
+                    // Only apps with their own saved position move the dot.
+                    // Everything else (desktop, apps without a position) leaves
+                    // it where it is, so alt-tabbing out of a game or clicking
+                    // the 2nd monitor doesn't drag it off the game's spot.
+                    if (profile != Config.IndicatorDefaultProfile &&
+                        _config.IndicatorPositions.ContainsKey(profile) &&
+                        !string.Equals(profile, _profile, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _profile = profile;
+                        _pos = ResolvePosition(profile);
+                        Render();
+                    }
                 }
             }
 
@@ -307,8 +334,10 @@ internal sealed class IndicatorForm : Form
         if (_disposed || !IsHandleCreated) return;
 
         int dot = DotPixels();
-        // Edit mode draws a ring around the dot — pad so it isn't clipped.
-        int pad = _editMode ? Math.Max(3, dot / 4) : 1;
+        // Room for the dark halo, plus the edit-mode ring outside it.
+        int halo = Math.Max(3, dot / 4);
+        int editRing = _editMode ? Math.Max(3, dot / 5) : 0;
+        int pad = halo + editRing;
         int size = dot + pad * 2;
 
         using var bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
@@ -320,14 +349,27 @@ internal sealed class IndicatorForm : Form
             var color = _muted ? s_mutedColor : s_liveColor;
             if (_editMode)
             {
-                using var ring = new Pen(s_editRingColor, Math.Max(2f, pad / 2f));
-                g.DrawEllipse(ring, pad / 2f, pad / 2f, size - pad, size - pad);
+                float w = Math.Max(2f, editRing * 0.7f);
+                using var ring = new Pen(s_editRingColor, w);
+                g.DrawEllipse(ring, w / 2, w / 2, size - w, size - w);
             }
-            // Thin dark outline keeps the dot readable on bright/red game scenes.
+
+            // Soft dark halo: concentric fills with fading alpha — makes the dot
+            // pop on bright scenes (snow, sky, white UI).
+            for (int i = halo; i >= 1; i--)
+            {
+                int a = 70 * (halo - i + 1) / halo;
+                using var shadow = new SolidBrush(Color.FromArgb(a, 0, 0, 0));
+                g.FillEllipse(shadow, pad - i, pad - i, dot + i * 2, dot + i * 2);
+            }
+
             using (var fill = new SolidBrush(color))
                 g.FillEllipse(fill, pad, pad, dot, dot);
-            using (var outline = new Pen(Color.FromArgb(160, 0, 0, 0), 1f))
-                g.DrawEllipse(outline, pad, pad, dot - 1, dot - 1);
+
+            // White rim keeps it readable on dark and red scenes.
+            float rim = Math.Max(1.5f, dot / 10f);
+            using (var outline = new Pen(Color.FromArgb(235, 255, 255, 255), rim))
+                g.DrawEllipse(outline, pad + rim / 2, pad + rim / 2, dot - rim, dot - rim);
         }
 
         nint screenDc = NativeMethods.GetDC(0);
