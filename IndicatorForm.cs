@@ -5,7 +5,7 @@ using System.Text;
 namespace MicMute;
 
 /// <summary>
-/// Always-on mute indicator: a small antialiased dot that stays above the
+/// Always-on mute indicator: the mic icon (or a small antialiased dot) that stays above the
 /// foreground app (games in borderless / fullscreen-optimised mode included).
 ///
 /// - Click-through and non-activating, so it never steals focus from a game.
@@ -43,6 +43,10 @@ internal sealed class IndicatorForm : Form
     private Point _dragOffset;
     private bool _disposed;
 
+    // Full-resolution icons for Indicator_Style=icon (reloaded on ApplyConfig).
+    private Icon _iconMuted;
+    private Icon _iconLive;
+
     // Cache pid → exe name; the foreground pid changes rarely.
     private uint _cachedPid;
     private string _cachedExe;
@@ -65,6 +69,7 @@ internal sealed class IndicatorForm : Form
         _pollTimer = new System.Windows.Forms.Timer { Interval = 1000 };
         _pollTimer.Tick += OnPoll;
 
+        LoadIcons();
         _ = Handle;
         _pos = ResolvePosition(_profile);
         _pollTimer.Start();
@@ -93,11 +98,12 @@ internal sealed class IndicatorForm : Form
         UpdateVisibility();
     }
 
-    /// <summary>Re-read enabled/size/show-when-live from config.</summary>
+    /// <summary>Re-read enabled/size/style/show-when-live (and custom icons) from config.</summary>
     public void ApplyConfig()
     {
         if (!_config.IndicatorEnabled && _editMode)
             ExitEditMode(save: false);
+        LoadIcons();
         Render();
         UpdateVisibility();
     }
@@ -327,7 +333,19 @@ internal sealed class IndicatorForm : Form
         }
     }
 
-    private int DotPixels() => Math.Max(4, (int)Math.Round(_config.IndicatorSize * DeviceDpi / 96.0));
+    private bool UseIcon => _config.IndicatorStyle == "icon";
+
+    private void LoadIcons()
+    {
+        _iconMuted?.Dispose();
+        _iconLive?.Dispose();
+        _iconMuted = TrayApp.LoadIconRaw(_config.IconMuted, "mic_off.ico", out _);
+        _iconLive = TrayApp.LoadIconRaw(_config.IconActive, "mic_on.ico", out _);
+    }
+
+    // An icon needs more pixels than a dot to stay recognisable, so it gets a 24px floor.
+    private int DotPixels() => Math.Max(4, (int)Math.Round(
+        (UseIcon ? Math.Max(24, _config.IndicatorSize) : _config.IndicatorSize) * DeviceDpi / 96.0));
 
     private void Render()
     {
@@ -363,13 +381,31 @@ internal sealed class IndicatorForm : Form
                 g.FillEllipse(shadow, pad - i, pad - i, dot + i * 2, dot + i * 2);
             }
 
-            using (var fill = new SolidBrush(color))
-                g.FillEllipse(fill, pad, pad, dot, dot);
+            var icon = _muted ? _iconMuted : _iconLive;
+            if (UseIcon && icon != null)
+            {
+                // Dark backplate behind the icon so it reads on bright scenes.
+                using (var plate = new SolidBrush(Color.FromArgb(150, 0, 0, 0)))
+                    g.FillEllipse(plate, pad, pad, dot, dot);
+                int inset = Math.Max(1, dot / 8);
+                int iconPx = dot - inset * 2;
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                // new Icon(icon, size) picks the closest frame in the .ico.
+                using var sized = new Icon(icon, iconPx, iconPx);
+                using var img = sized.ToBitmap();
+                g.DrawImage(img, new Rectangle(pad + inset, pad + inset, iconPx, iconPx));
+            }
+            else
+            {
+                using (var fill = new SolidBrush(color))
+                    g.FillEllipse(fill, pad, pad, dot, dot);
 
-            // White rim keeps it readable on dark and red scenes.
-            float rim = Math.Max(1.5f, dot / 10f);
-            using (var outline = new Pen(Color.FromArgb(235, 255, 255, 255), rim))
-                g.DrawEllipse(outline, pad + rim / 2, pad + rim / 2, dot - rim, dot - rim);
+                // White rim keeps it readable on dark and red scenes.
+                float rim = Math.Max(1.5f, dot / 10f);
+                using (var outline = new Pen(Color.FromArgb(235, 255, 255, 255), rim))
+                    g.DrawEllipse(outline, pad + rim / 2, pad + rim / 2, dot - rim, dot - rim);
+            }
         }
 
         nint screenDc = NativeMethods.GetDC(0);
@@ -407,6 +443,8 @@ internal sealed class IndicatorForm : Form
             _disposed = true;
             _pollTimer.Stop();
             _pollTimer.Dispose();
+            _iconMuted?.Dispose();
+            _iconLive?.Dispose();
         }
         base.Dispose(disposing);
     }

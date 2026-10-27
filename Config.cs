@@ -43,6 +43,8 @@ internal sealed class Config
     public bool IndicatorEnabled = true;
     public bool IndicatorShowWhenLive;
     public int IndicatorSize = 18;
+    // "icon" draws the mic_on/mic_off (or custom) icon, "dot" the plain coloured dot.
+    public string IndicatorStyle = "icon";
     public string IndicatorEditHotkey = "#^+i";
     public Dictionary<string, Point> IndicatorPositions = new(StringComparer.OrdinalIgnoreCase);
     public const string IndicatorDefaultProfile = "*";
@@ -206,6 +208,7 @@ internal sealed class Config
         IndicatorShowWhenLive = ReadIni("Indicator_ShowWhenLive", "0") == "1";
         if (int.TryParse(ReadIni("Indicator_Size", "18"), out int indSize))
             IndicatorSize = Math.Clamp(indSize, 6, 64);
+        IndicatorStyle = ReadIni("Indicator_Style", "icon").Trim().ToLowerInvariant() == "dot" ? "dot" : "icon";
         IndicatorEditHotkey = ReadIni("Indicator_EditHotkey", IndicatorEditHotkey).Trim();
         LoadIndicatorPositions();
 
@@ -278,6 +281,7 @@ internal sealed class Config
         sb.AppendLine("Indicator_Enabled=" + (IndicatorEnabled ? "1" : "0"));
         sb.AppendLine("Indicator_ShowWhenLive=" + (IndicatorShowWhenLive ? "1" : "0"));
         sb.AppendLine("Indicator_Size=" + IndicatorSize.ToString());
+        sb.AppendLine("Indicator_Style=" + IndicatorStyle);
         sb.AppendLine("Indicator_EditHotkey=" + IndicatorEditHotkey);
         sb.AppendLine();
         sb.AppendLine("[" + IndicatorSection + "]");

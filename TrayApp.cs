@@ -390,7 +390,7 @@ internal sealed class TrayApp : Form
     private static Icon LoadIcon(string customPath, string embeddedName)
         => LoadIcon(customPath, embeddedName, out _);
 
-    private static Icon LoadIconRaw(string customPath, string embeddedName, out bool usedFallback)
+    internal static Icon LoadIconRaw(string customPath, string embeddedName, out bool usedFallback)
     {
         usedFallback = false;
         // Priority: custom path > file on disk next to exe > embedded resource
@@ -962,7 +962,7 @@ internal sealed class TrayApp : Form
         }
         _indicator.ToggleEditMode();
         if (_indicator.EditMode)
-            ShowTimedTooltip("Drag the dot. Press " + Config.HotkeyToReadable(_config.IndicatorEditHotkey) +
+            ShowTimedTooltip("Drag the indicator. Press " + Config.HotkeyToReadable(_config.IndicatorEditHotkey) +
                              " or right-click it to save\nPosition for: " + DescribeProfile(_indicator.CurrentProfile), 4000);
         else
             ShowTimedTooltip("Position saved for: " + DescribeProfile(_indicator.LastSavedProfile), 2500);
@@ -1366,15 +1366,21 @@ internal sealed class TrayApp : Form
         // Status indicator submenu
         var indicatorItem = new ToolStripMenuItem("Status Indicator");
         ThemeDropDown(indicatorItem);
-        var indEnabled = new ToolStripMenuItem("Show red dot while muted") { Checked = _config.IndicatorEnabled };
+        var indEnabled = new ToolStripMenuItem("Show indicator while muted") { Checked = _config.IndicatorEnabled };
         indEnabled.Click += (_, _) => SetIndicatorOption(c => c.IndicatorEnabled = !c.IndicatorEnabled);
-        var indLive = new ToolStripMenuItem("Also show green dot while live")
+        var indIcon = new ToolStripMenuItem("Use mic icon instead of dot")
+        {
+            Checked = _config.IndicatorStyle == "icon",
+            Enabled = _config.IndicatorEnabled,
+        };
+        indIcon.Click += (_, _) => SetIndicatorOption(c => c.IndicatorStyle = c.IndicatorStyle == "icon" ? "dot" : "icon");
+        var indLive = new ToolStripMenuItem("Also show while live")
         {
             Checked = _config.IndicatorShowWhenLive,
             Enabled = _config.IndicatorEnabled,
         };
         indLive.Click += (_, _) => SetIndicatorOption(c => c.IndicatorShowWhenLive = !c.IndicatorShowWhenLive);
-        var indEdit = new ToolStripMenuItem(_indicator?.EditMode == true ? "Save position" : "Move dot…")
+        var indEdit = new ToolStripMenuItem(_indicator?.EditMode == true ? "Save position" : "Move indicator…")
         {
             Enabled = _config.IndicatorEnabled,
             ShortcutKeyDisplayString = string.IsNullOrEmpty(_config.IndicatorEditHotkey)
@@ -1387,6 +1393,7 @@ internal sealed class TrayApp : Form
         };
         indReset.Click += (_, _) => _indicator.ResetCurrentProfile();
         indicatorItem.DropDownItems.Add(indEnabled);
+        indicatorItem.DropDownItems.Add(indIcon);
         indicatorItem.DropDownItems.Add(indLive);
         indicatorItem.DropDownItems.Add(new ToolStripSeparator());
         indicatorItem.DropDownItems.Add(indEdit);
