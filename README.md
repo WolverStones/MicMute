@@ -19,7 +19,7 @@ A lightweight system tray utility that lets you mute and unmute your microphone 
 - **Tray icon**: Green = active, Red = muted. Left-click to toggle.
 - **On-screen display**: Floating dark bubble above the taskbar shows mute state
 - **Mute Lock**: Reverts external mute changes on the next 15-second sync tick. Catches drive-by changes from meeting apps or OS sound settings. Not instant — apps that actively manage mute mid-call (Discord PTT, etc.) will win in the moment.
-- **Idle auto-mute**: Mutes the mic after a set time without keyboard or mouse input, but only while a call app such as Discord is using a microphone. A soft chime warns 15 seconds first, so moving the mouse cancels it. Toggle mode only, and it doesn't unmute automatically.
+- **Idle auto-mute**: Mutes the mic after a set time without keyboard or mouse input, but only while a call app such as Discord is using a microphone. A sound warns 15 seconds first, so moving the mouse cancels it. Toggle mode only, and it doesn't unmute automatically.
 - **Mic source selection**: Pick which microphone to control
 - **Sound feedback**: Audible tone on mute/unmute (custom .wav support)
 - **Custom icons**: Replace default tray icons with your own .ico files
@@ -144,7 +144,7 @@ cs2.exe=1880,120
 | `AutoMute_Enabled` | `0` | Mute after idle time while a listed app is using a mic (Toggle mode only) |
 | `AutoMute_Minutes` | `2` | Minutes without keyboard or mouse input before muting (1-120) |
 | `AutoMute_Apps` | *(call apps and browsers)* | Comma-separated process names that count as a call |
-| `AutoMute_Sound` | `1` | Play the auto-mute warning and mute chimes |
+| `AutoMute_Sound` | `1` | Play the auto-mute warning and mute sounds |
 | `MiddleClickToggle` | `1` | Middle-click tray to switch modes |
 | `StartMuted` | `no` | `no`, `yes`, `unmuted`, or `last` |
 | `DeafenHotkey` | *(empty)* | Hotkey for deafen mode |

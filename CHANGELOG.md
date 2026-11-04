@@ -7,7 +7,7 @@ All notable changes to MicMute are documented here.
 ## [Unreleased]
 
 ### Added
-- **Idle auto-mute during calls.** With *Settings → Auto-mute when idle during a call*, the mic mutes after the set time (2 minutes by default) without keyboard or mouse input, but only while a process from `AutoMute_Apps` is actively capturing from a microphone. Calls are detected from Windows audio sessions, so no window titles or Discord APIs are involved. A soft two-note chime warns 15 seconds before muting, and moving the mouse cancels it; a descending chime confirms the mute. Disable both with `AutoMute_Sound=0`. It works in Toggle mode and doesn't unmute automatically.
+- **Idle auto-mute during calls.** With *Settings → Auto-mute when idle during a call*, the mic mutes after the set time (2 minutes by default) without keyboard or mouse input, but only while a process from `AutoMute_Apps` is actively capturing from a microphone. Calls are detected from Windows audio sessions, so no window titles or Discord APIs are involved. Three quick pulses warn 15 seconds before muting, and moving the mouse cancels it; a falling tone confirms the mute. Disable both with `AutoMute_Sound=0`. It works in Toggle mode and doesn't unmute automatically.
 
 ## [2.4.0] - 2026-10-13
 

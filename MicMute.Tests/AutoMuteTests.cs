@@ -63,7 +63,7 @@ public class AutoMuteTests
     [TestMethod]
     public void BuildWav_WritesConsistentPcmHeader()
     {
-        byte[] wav = AutoMuteSounds.BuildWav((440.0, 100));
+        byte[] wav = AutoMuteSounds.BuildWav(new Tone(440, 440, 100));
         int dataBytes = BitConverter.ToInt32(wav, 40);
 
         Assert.AreEqual("RIFF", System.Text.Encoding.ASCII.GetString(wav, 0, 4));
@@ -74,15 +74,23 @@ public class AutoMuteTests
     }
 
     [TestMethod]
+    public void BuildWav_CountsGapsAsSilence()
+    {
+        byte[] wav = AutoMuteSounds.BuildWav(new Tone(1320, 1320, 100, GapMs: 100));
+        Assert.AreEqual(8820 * 2, BitConverter.ToInt32(wav, 40));
+        Assert.AreEqual(0, BitConverter.ToInt16(wav, wav.Length - 2));
+    }
+
+    [TestMethod]
     public void BuildWav_StaysBelowClippingAndFadesOut()
     {
-        byte[] wav = AutoMuteSounds.BuildWav((880.0, 200));
+        byte[] wav = AutoMuteSounds.BuildWav(new Tone(880, 175, 200));
         int peak = 0;
         for (int i = 44; i < wav.Length; i += 2)
             peak = Math.Max(peak, Math.Abs((int)BitConverter.ToInt16(wav, i)));
 
         Assert.IsTrue(peak > 0);
-        Assert.IsTrue(peak <= short.MaxValue * 0.5);
-        Assert.AreEqual(0, BitConverter.ToInt16(wav, wav.Length - 2));
+        Assert.IsTrue(peak <= short.MaxValue * 0.75);
+        Assert.IsTrue(Math.Abs((int)BitConverter.ToInt16(wav, wav.Length - 2)) < 32);
     }
 }
