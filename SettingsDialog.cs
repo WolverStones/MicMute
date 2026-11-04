@@ -17,6 +17,8 @@ internal sealed class SettingsDialog : Form
     private readonly CheckBox _chkOsd;
     private readonly NumericUpDown _edtOsdDuration;
     private readonly CheckBox _chkMuteLock;
+    private readonly CheckBox _chkAutoMute;
+    private readonly NumericUpDown _edtAutoMuteMinutes;
     private readonly CheckBox _chkMiddleClick;
     private readonly CheckBox _chkRunAtStartup;
     private readonly ComboBox _ddlStartMuted;
@@ -120,6 +122,14 @@ internal sealed class SettingsDialog : Form
         _chkMuteLock = behavior.Check(Fields.Check("Mute Lock"));
         _chkMuteLock.Checked = config.MuteLock;
         behavior.Hint("Reverts external mute changes every 15 seconds (not instant).", indentPx: 14);
+
+        // Auto-mute row: checkbox (left) + "After (min):" label + numeric (right edge).
+        _chkAutoMute = Fields.Check("Auto-mute when idle during a call");
+        _chkAutoMute.Checked = config.AutoMuteEnabled;
+        _edtAutoMuteMinutes = Fields.Numeric(AutoMute.MinMinutes, AutoMute.MaxMinutes,
+            config.AutoMuteMinutes, 1, UiTokens.OsdDurationWidth);
+        behavior.EdgeRow(_chkAutoMute, UiLayout.LabelBefore("After (min):", _edtAutoMuteMinutes, dim: true));
+        behavior.Hint("Mutes after no keyboard or mouse input while a call app uses the mic.\nToggle mode only. It doesn't unmute automatically.", indentPx: 14);
 
         _chkMiddleClick = behavior.Check(Fields.Check("Middle-click tray icon to toggle Toggle/PTT mode"));
         _chkMiddleClick.Checked = config.MiddleClickToggle;
@@ -239,6 +249,8 @@ internal sealed class SettingsDialog : Form
         // NumericUpDown clamps + validates inherently.
         _config.OsdDuration = (int)_edtOsdDuration.Value;
         _config.MuteLock = _chkMuteLock.Checked;
+        _config.AutoMuteEnabled = _chkAutoMute.Checked;
+        _config.AutoMuteMinutes = (int)_edtAutoMuteMinutes.Value;
         _config.MiddleClickToggle = _chkMiddleClick.Checked;
 
         _config.StartMuted = _ddlStartMuted.SelectedIndex switch

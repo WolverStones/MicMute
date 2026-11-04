@@ -53,6 +53,8 @@ On-screen display (OSD): Shows a small dark floating bubble above the taskbar wh
 
 Mute Lock: Prevents other applications from silently unmuting or muting your mic.
 
+Auto-mute when idle: Mutes your mic after the set number of minutes without keyboard or mouse input, but only while a call app such as Discord is using a microphone. It works in Toggle mode and doesn't unmute automatically.
+
 Middle-click toggle: When enabled, middle-clicking the tray icon swaps between Toggle and Push-to-Talk mode.
 
 Run at startup: Creates a Windows startup shortcut so MicMute launches automatically when you log in.

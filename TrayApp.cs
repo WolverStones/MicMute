@@ -15,6 +15,7 @@ internal sealed class TrayApp : Form
     private readonly NotifyIcon _trayIcon;
     private readonly ContextMenuStrip _trayMenu;
     private readonly System.Windows.Forms.Timer _syncTimer;
+    private readonly System.Windows.Forms.Timer _autoMuteTimer;
     private readonly OsdForm _osdForm;
     private readonly IndicatorForm _indicator;
 
@@ -190,6 +191,11 @@ internal sealed class TrayApp : Form
             _syncTimer.Tick += OnSyncTick;
             _syncTimer.Start();
 
+            // Idle check only. Audio sessions are read once the idle limit is reached.
+            _autoMuteTimer = new System.Windows.Forms.Timer { Interval = 5000 };
+            _autoMuteTimer.Tick += OnAutoMuteTick;
+            _autoMuteTimer.Start();
+
             // Hotkey registration is deferred to OnHandleCreated (A2-F10) where the
             // HWND is guaranteed to be valid.  The fields are initialised here so
             // the hotkey section below is a no-op — the real call happens in
@@ -316,6 +322,7 @@ internal sealed class TrayApp : Form
     private void DisposeSafe()
     {
         try { _syncTimer?.Stop(); _syncTimer?.Dispose(); } catch { }
+        try { _autoMuteTimer?.Stop(); _autoMuteTimer?.Dispose(); } catch { }
         try { _flashTimer?.Stop(); _flashTimer?.Dispose(); } catch { }
         try { _pttUniversalTimer?.Stop(); _pttUniversalTimer?.Dispose(); } catch { }
         try { _osdForm?.Dispose(); } catch { }
@@ -577,6 +584,46 @@ internal sealed class TrayApp : Form
             PlayFeedback();
         }
         return true;
+    }
+
+    // ── Idle Auto-Mute ───────────────────────────────────────────────────
+
+    private void OnAutoMuteTick(object sender, EventArgs e)
+    {
+        try
+        {
+            // PTT is already muted unless the key is held, and deafen implies _muted.
+            if (_shuttingDown || !_config.AutoMuteEnabled || _config.Mode != "toggle"
+                || _muted || !_audio.HasEndpoint)
+                return;
+
+            if (!NativeMethods.TryGetLastInputTick(out uint lastInputTick))
+                return;
+
+            uint idleMs = AutoMute.IdleMilliseconds(unchecked((uint)Environment.TickCount), lastInputTick);
+            if (idleMs < (uint)_config.AutoMuteMinutes * 60000u)
+                return;
+
+            string callApp = AutoMute.FindCallApp(
+                AudioManager.GetActiveCaptureProcessNames(),
+                AutoMute.ParseApps(_config.AutoMuteApps));
+            if (callApp == null)
+                return;
+
+            if (!SetMuteState(true, true))
+            {
+                Log.Warn($"Auto-mute failed while {callApp} was using the mic");
+                return;
+            }
+
+            Log.Info($"Auto-muted after {_config.AutoMuteMinutes} min idle ({callApp} using the mic)");
+            PlayFeedback();
+            ShowTimedTooltip($"Mic auto-muted after {_config.AutoMuteMinutes} min idle ({callApp}).", 5000);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("OnAutoMuteTick", ex);
+        }
     }
 
     // ── Sound Feedback ───────────────────────────────────────────────────

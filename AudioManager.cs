@@ -12,6 +12,8 @@ internal sealed class AudioManager : IDisposable
     private static readonly Guid CLSID_MMDeviceEnumerator = new("BCDE0395-E52F-467C-8E3D-C4579291692E");
     private static readonly Guid IID_IMMDeviceEnumerator = new("A95664D2-9614-4F35-A746-DE8DB63617E6");
     private static readonly Guid IID_IAudioEndpointVolume = new("5CDF2C82-841E-4546-9722-0CF74078229A");
+    private static readonly Guid IID_IAudioSessionManager2 = new("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F");
+    private static readonly Guid IID_IAudioSessionControl2 = new("BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D");
 
     // PKEY_Device_FriendlyName = {A45C254E-DF1C-4EFD-8020-67D146A850E0}, 14
     private static readonly Guid PKEY_FriendlyName_fmtid = new("A45C254E-DF1C-4EFD-8020-67D146A850E0");
@@ -37,6 +39,21 @@ internal sealed class AudioManager : IDisposable
 
     // IPropertyStore vtable
     private const int VT_PropStore_GetValue = 5;
+
+    // IAudioSessionManager2 vtable (IAudioSessionManager occupies 3-4)
+    private const int VT_GetSessionEnumerator = 5;
+
+    // IAudioSessionEnumerator vtable
+    private const int VT_Sessions_GetCount = 3;
+    private const int VT_Sessions_GetSession = 4;
+
+    // IAudioSessionControl vtable
+    private const int VT_Session_GetState = 3;
+
+    // IAudioSessionControl2 vtable (IAudioSessionControl occupies 3-11)
+    private const int VT_Session_GetProcessId = 14;
+
+    private const int AudioSessionStateActive = 1;
 
     private nint _pAudioEndpointVolume;
     private bool _disposed;
@@ -219,6 +236,158 @@ internal sealed class AudioManager : IDisposable
         }
 
         return devices;
+    }
+
+    /// <summary>
+    /// Return the process names of apps actively capturing from any microphone.
+    /// All capture devices are scanned so a call routed through a virtual mic
+    /// (VoiceMeeter and similar) is still seen.
+    /// </summary>
+    public static List<string> GetActiveCaptureProcessNames()
+    {
+        var names = new List<string>();
+
+        var clsid = CLSID_MMDeviceEnumerator;
+        var iid = IID_IMMDeviceEnumerator;
+        int hr = CoCreateInstance(ref clsid, 0, 1, ref iid, out nint pEnum);
+        if (hr < 0 || pEnum == 0)
+            return names;
+
+        try
+        {
+            hr = ComCall_EnumEndpoints(pEnum, out nint pCollection);
+            try
+            {
+                if (hr < 0 || pCollection == 0)
+                    return names;
+
+                hr = ComCall_GetCount(pCollection, out int count);
+                if (hr < 0)
+                    return names;
+
+                for (int i = 0; i < count; i++)
+                {
+                    hr = ComCall_Item(pCollection, i, out nint pDev);
+                    if (hr < 0 || pDev == 0)
+                        continue;
+
+                    try
+                    {
+                        AddActiveSessionProcessNames(pDev, names);
+                    }
+                    finally
+                    {
+                        Marshal.Release(pDev);
+                    }
+                }
+            }
+            finally
+            {
+                if (pCollection != 0) Marshal.Release(pCollection);
+            }
+        }
+        finally
+        {
+            Marshal.Release(pEnum);
+        }
+
+        return names;
+    }
+
+    private static void AddActiveSessionProcessNames(nint pDev, List<string> names)
+    {
+        int hr = ComCall_ActivateInterface(pDev, IID_IAudioSessionManager2, out nint pManager);
+        try
+        {
+            if (hr < 0 || pManager == 0)
+                return;
+
+            nint managerVtable = Marshal.ReadIntPtr(pManager);
+            nint enumeratorFn = Marshal.ReadIntPtr(managerVtable, VT_GetSessionEnumerator * nint.Size);
+            var getEnumerator = Marshal.GetDelegateForFunctionPointer<GetSessionEnumeratorDelegate>(enumeratorFn);
+            hr = getEnumerator(pManager, out nint pSessions);
+            try
+            {
+                if (hr < 0 || pSessions == 0)
+                    return;
+
+                nint sessionsVtable = Marshal.ReadIntPtr(pSessions);
+                nint countFn = Marshal.ReadIntPtr(sessionsVtable, VT_Sessions_GetCount * nint.Size);
+                nint itemFn = Marshal.ReadIntPtr(sessionsVtable, VT_Sessions_GetSession * nint.Size);
+                var getCount = Marshal.GetDelegateForFunctionPointer<GetCountDelegate>(countFn);
+                var getSession = Marshal.GetDelegateForFunctionPointer<ItemDelegate>(itemFn);
+
+                hr = getCount(pSessions, out int count);
+                if (hr < 0)
+                    return;
+
+                for (int i = 0; i < count; i++)
+                {
+                    hr = getSession(pSessions, i, out nint pControl);
+                    if (hr < 0 || pControl == 0)
+                        continue;
+
+                    try
+                    {
+                        string name = GetActiveSessionProcessName(pControl);
+                        if (name != null)
+                            names.Add(name);
+                    }
+                    finally
+                    {
+                        Marshal.Release(pControl);
+                    }
+                }
+            }
+            finally
+            {
+                if (pSessions != 0) Marshal.Release(pSessions);
+            }
+        }
+        finally
+        {
+            if (pManager != 0) Marshal.Release(pManager);
+        }
+    }
+
+    private static string GetActiveSessionProcessName(nint pControl)
+    {
+        nint vtable = Marshal.ReadIntPtr(pControl);
+        nint stateFn = Marshal.ReadIntPtr(vtable, VT_Session_GetState * nint.Size);
+        var getState = Marshal.GetDelegateForFunctionPointer<GetSessionStateDelegate>(stateFn);
+        int hr = getState(pControl, out int state);
+        if (hr < 0 || state != AudioSessionStateActive)
+            return null;
+
+        var iid = IID_IAudioSessionControl2;
+        hr = Marshal.QueryInterface(pControl, ref iid, out nint pControl2);
+        if (hr < 0 || pControl2 == 0)
+            return null;
+
+        try
+        {
+            nint vtable2 = Marshal.ReadIntPtr(pControl2);
+            nint pidFn = Marshal.ReadIntPtr(vtable2, VT_Session_GetProcessId * nint.Size);
+            var getProcessId = Marshal.GetDelegateForFunctionPointer<GetSessionProcessIdDelegate>(pidFn);
+            hr = getProcessId(pControl2, out uint pid);
+            if (hr < 0 || pid == 0)
+                return null;
+
+            using var process = System.Diagnostics.Process.GetProcessById((int)pid);
+            return process.ProcessName;
+        }
+        catch (ArgumentException)
+        {
+            return null; // The process exited after the session was enumerated.
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+        finally
+        {
+            Marshal.Release(pControl2);
+        }
     }
 
     /// <summary>
@@ -450,6 +619,14 @@ internal sealed class AudioManager : IDisposable
         return fn(pDev, in iidAEV, 1, 0, out pAEV);
     }
 
+    private static int ComCall_ActivateInterface(nint pDev, Guid iid, out nint pInterface)
+    {
+        nint vtable = Marshal.ReadIntPtr(pDev);
+        nint fnPtr = Marshal.ReadIntPtr(vtable, VT_Activate * nint.Size);
+        var fn = Marshal.GetDelegateForFunctionPointer<ActivateDelegate>(fnPtr);
+        return fn(pDev, in iid, 1, 0, out pInterface);
+    }
+
     private int ComCall_GetMute(nint pAEV, out int muted)
     {
         nint vtable = Marshal.ReadIntPtr(pAEV);
@@ -515,6 +692,15 @@ internal sealed class AudioManager : IDisposable
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate int GetValueDelegate(nint pThis, nint key, nint pv);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetSessionEnumeratorDelegate(nint pThis, out nint ppSessionEnum);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetSessionStateDelegate(nint pThis, out int pState);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetSessionProcessIdDelegate(nint pThis, out uint pRetVal);
 
     [DllImport("ole32.dll")]
     private static extern int CoCreateInstance(ref Guid rclsid, nint pUnkOuter, int dwClsContext, ref Guid riid, out nint ppv);
