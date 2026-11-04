@@ -71,6 +71,26 @@ internal static class NativeMethods
     public const int DWMWA_CAPTION_COLOR = 35;   // titlebar background
     public const int DWMWA_TEXT_COLOR    = 36;   // titlebar text
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LASTINPUTINFO
+    {
+        public uint cbSize;
+        public uint dwTime;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+
+    /// <summary>Read the tick count of the last keyboard or mouse input in this session.</summary>
+    public static bool TryGetLastInputTick(out uint tick)
+    {
+        var info = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
+        bool ok = GetLastInputInfo(ref info);
+        tick = info.dwTime;
+        return ok;
+    }
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern nint FindWindow(string lpClassName, string lpWindowName);
 

@@ -22,6 +22,10 @@ internal sealed class Config
     public string MuteSound = "";
     public string UnmuteSound = "";
     public bool MuteLock;
+    public bool AutoMuteEnabled;
+    public int AutoMuteMinutes = AutoMute.DefaultMinutes;
+    public string AutoMuteApps = AutoMute.DefaultApps;
+    public bool AutoMuteSound = true;
     public bool OsdEnabled;
     public int OsdDuration = 800;
     public string DeafenHotkey = "";
@@ -173,6 +177,12 @@ internal sealed class Config
         MuteSound = SanitizePath(ReadIni("MuteSound", "").Trim());
         UnmuteSound = SanitizePath(ReadIni("UnmuteSound", "").Trim());
         MuteLock = ReadIni("MuteLock", "0") == "1";
+        AutoMuteEnabled = ReadIni("AutoMute_Enabled", "0") == "1";
+        if (int.TryParse(ReadIni("AutoMute_Minutes", AutoMute.DefaultMinutes.ToString()), out int autoMuteMinutes))
+            AutoMuteMinutes = Math.Clamp(autoMuteMinutes, AutoMute.MinMinutes, AutoMute.MaxMinutes);
+        string rawAutoMuteApps = ReadIni("AutoMute_Apps", AutoMute.DefaultApps).Trim();
+        AutoMuteApps = rawAutoMuteApps.Length > 0 ? rawAutoMuteApps : AutoMute.DefaultApps;
+        AutoMuteSound = ReadIni("AutoMute_Sound", "1") == "1";
         OsdEnabled = ReadIni("OSD_Enabled", "0") == "1";
         string rawOsdDur = ReadIni("OSD_Duration", "800");
         if (int.TryParse(rawOsdDur, out int dur))
@@ -269,6 +279,10 @@ internal sealed class Config
         sb.AppendLine("MuteSound=" + MuteSound);
         sb.AppendLine("UnmuteSound=" + UnmuteSound);
         sb.AppendLine("MuteLock=" + (MuteLock ? "1" : "0"));
+        sb.AppendLine("AutoMute_Enabled=" + (AutoMuteEnabled ? "1" : "0"));
+        sb.AppendLine("AutoMute_Minutes=" + AutoMuteMinutes.ToString());
+        sb.AppendLine("AutoMute_Apps=" + AutoMuteApps);
+        sb.AppendLine("AutoMute_Sound=" + (AutoMuteSound ? "1" : "0"));
         sb.AppendLine("OSD_Enabled=" + (OsdEnabled ? "1" : "0"));
         sb.AppendLine("OSD_Duration=" + OsdDuration.ToString());
         sb.AppendLine("DeafenHotkey=" + DeafenHotkey);
