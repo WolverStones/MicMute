@@ -27,6 +27,8 @@ internal sealed class TrayApp : Form
     private bool _deafened;
     private bool _speakerWasMuted;
     private bool _lockDebounce;
+    private bool _autoMuteWarned;
+    private uint _autoMuteWarnedTick;
     private bool _flashing;
     private int _flashCount;
     private readonly System.Windows.Forms.Timer _flashTimer;
@@ -595,21 +597,49 @@ internal sealed class TrayApp : Form
             // PTT is already muted unless the key is held, and deafen implies _muted.
             if (_shuttingDown || !_config.AutoMuteEnabled || _config.Mode != "toggle"
                 || _muted || !_audio.HasEndpoint)
+            {
+                _autoMuteWarned = false;
                 return;
+            }
 
             if (!NativeMethods.TryGetLastInputTick(out uint lastInputTick))
                 return;
 
-            uint idleMs = AutoMute.IdleMilliseconds(unchecked((uint)Environment.TickCount), lastInputTick);
-            if (idleMs < (uint)_config.AutoMuteMinutes * 60000u)
+            uint nowTick = unchecked((uint)Environment.TickCount);
+            uint idleMs = AutoMute.IdleMilliseconds(nowTick, lastInputTick);
+            uint warningMs = AutoMute.WarningSeconds * 1000u;
+            uint limitMs = (uint)_config.AutoMuteMinutes * 60000u;
+
+            if (idleMs < limitMs - warningMs)
+            {
+                _autoMuteWarned = false;
                 return;
+            }
 
             string callApp = AutoMute.FindCallApp(
                 AudioManager.GetActiveCaptureProcessNames(),
                 AutoMute.ParseApps(_config.AutoMuteApps));
             if (callApp == null)
+            {
+                _autoMuteWarned = false;
+                return;
+            }
+
+            // Warn first even when a tick arrives late, such as just after resume.
+            if (!_autoMuteWarned)
+            {
+                _autoMuteWarned = true;
+                _autoMuteWarnedTick = nowTick;
+                if (_config.AutoMuteSound)
+                    AutoMuteSounds.PlayWarning();
+                ShowTimedTooltip($"Mic auto-mutes in {AutoMute.WarningSeconds} s.\nMove the mouse to stay live.", 5000);
+                return;
+            }
+
+            if (idleMs < limitMs || AutoMute.IdleMilliseconds(nowTick, _autoMuteWarnedTick) < warningMs)
                 return;
 
+            _autoMuteWarned = false;
             if (!SetMuteState(true, true))
             {
                 Log.Warn($"Auto-mute failed while {callApp} was using the mic");
@@ -617,7 +647,10 @@ internal sealed class TrayApp : Form
             }
 
             Log.Info($"Auto-muted after {_config.AutoMuteMinutes} min idle ({callApp} using the mic)");
-            PlayFeedback();
+            if (_config.AutoMuteSound)
+                AutoMuteSounds.PlayMuted();
+            else
+                PlayFeedback();
             ShowTimedTooltip($"Mic auto-muted after {_config.AutoMuteMinutes} min idle ({callApp}).", 5000);
         }
         catch (Exception ex)

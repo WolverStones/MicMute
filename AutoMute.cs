@@ -9,6 +9,7 @@ internal static class AutoMute
     public const int MinMinutes = 1;
     public const int MaxMinutes = 120;
     public const int DefaultMinutes = 2;
+    public const int WarningSeconds = 15;
 
     // An allow-list rather than "any app using the mic": voice-effect tools and
     // recorders can hold a capture stream open all day without any call running.
